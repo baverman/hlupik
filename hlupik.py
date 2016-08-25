@@ -3,10 +3,23 @@ import ssl
 import socket
 import time
 
-from errno import EAGAIN
+from errno import EAGAIN, EPIPE
 from urlparse import urlsplit
 from contextlib import contextmanager
 from collections import deque
+
+
+class cached_property(object):
+    def __init__(self, func):
+        self.func = func
+        self.__name__ = func.__name__
+
+    def __get__(self, obj, cls):
+        if obj is None:
+            return self.func
+        val = self.func(obj)
+        obj.__dict__[self.__name__] = val
+        return val
 
 
 class BadStatusLine(Exception):
@@ -24,6 +37,10 @@ class Response(object):
     def __init__(self, header_data, body):
         self.header_data = header_data
         self.body = body
+
+    @cached_property
+    def status_code(self):
+        return int(self.header_data.split(' ', 3)[1])
 
 
 header_re = re.compile('(?im)^(content-length|connection|transfer-encoding): (.+?)\r')
@@ -114,12 +131,24 @@ class Pool(object):
     def put_conn(self, key, cn):
         self.queue(key).append(cn)
 
-    def request(self, method, url, headers=None, hostname=None):
+    def request(self, method, url, headers=None, hostname=None, retry=3):
         https, host, port, hn, path = split_url(url)
         headers = headers or {}
-        with self.conn(host, port, https) as (cn, cl):
-            headers['Host'] = hostname or hn
-            return cl.request(cn, method, path, headers.items())
+        while retry:
+            retry -= 1
+            try:
+                with self.conn(host, port, https) as (cn, cl):
+                    headers['Host'] = hostname or hn
+                    return cl.request(cn, method, path, headers.items())
+            except IOError as e:
+                if e.errno == EPIPE:
+                    self.queue((host, port, https)).clear()
+            except BadStatusLine as e:
+                self.queue((host, port, https)).clear()
+            except Exception:
+                raise
+
+        raise e
 
 
 class Client(object):

@@ -61,6 +61,7 @@ def test_simple():
     cn = Connection(sr('boo'))
     resp = cl.request(cn, 'GET', '/', [('Header', 'value')])
     assert resp.body == 'boo'
+    assert resp.status_code == 200
     assert not cn.responses
 
 
