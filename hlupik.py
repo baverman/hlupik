@@ -1,6 +1,9 @@
 import re
 import ssl
 import socket
+import time
+
+from errno import EAGAIN
 from urlparse import urlsplit
 from contextlib import contextmanager
 from collections import deque
@@ -111,10 +114,11 @@ class Pool(object):
     def put_conn(self, key, cn):
         self.queue(key).append(cn)
 
-    def request(self, method, url, headers=None, host=None):
+    def request(self, method, url, headers=None, hostname=None):
         https, host, port, hn, path = split_url(url)
+        headers = headers or {}
         with self.conn(host, port, https) as (cn, cl):
-            headers['Host'] = host or hn
+            headers['Host'] = hostname or hn
             return cl.request(cn, method, path, headers.items())
 
 
@@ -144,7 +148,13 @@ class Client(object):
         body_data = None
         partial = False
         while True:
-            size = conn.recv_into(header_mv[header_size:], rsize)
+            try:
+                size = conn.recv_into(header_mv[header_size:], rsize)
+            except IOError as e:
+                if e.errno == EAGAIN:
+                    time.sleep(0.01)
+                    continue
+
             if not size:
                 raise BadStatusLine('Bad status line: "{}"'.format(self.header_buf[:header_size]))
             header_end = self.header_buf.find(HEADER_SEP, max(0, header_size-4), header_size + size)
