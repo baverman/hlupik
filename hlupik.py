@@ -143,6 +143,8 @@ class Pool(object):
             except IOError as e:
                 if e.errno == EPIPE:
                     self.queue((host, port, https)).clear()
+                    continue
+                raise
             except BadStatusLine as e:
                 self.queue((host, port, https)).clear()
             except Exception:
@@ -183,6 +185,7 @@ class Client(object):
                 if e.errno == EAGAIN:
                     time.sleep(0.01)
                     continue
+                raise
 
             if not size:
                 raise BadStatusLine('Bad status line: "{}"'.format(self.header_buf[:header_size]))
