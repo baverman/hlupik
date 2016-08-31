@@ -109,8 +109,9 @@ class Pool(object):
             yield cn, cl
         finally:
             self._clients.append(cl)
-            if not cn.closed:
-                self.put_conn(key, cn)
+
+        if not cn.closed:
+            self.put_conn(key, cn)
 
     def queue(self, key):
         try:
@@ -143,8 +144,8 @@ class Pool(object):
             except IOError as e:
                 if e.errno == EPIPE:
                     self.queue((host, port, https)).clear()
-                    continue
-                raise
+                else:
+                    raise
             except BadStatusLine as e:
                 self.queue((host, port, https)).clear()
             except Exception:
@@ -215,7 +216,13 @@ class Client(object):
             body_data, partial = self.read_chunked(conn, body_size)
         else:
             while True:
-                size = conn.recv_into(body_mv[body_size:], rsize)
+                try:
+                    size = conn.recv_into(body_mv[body_size:], rsize)
+                except IOError as e:
+                    if e.errno == EAGAIN:
+                        time.sleep(0.01)
+                        continue
+                    raise
 
                 if not size:
                     if need_to_read > 0:

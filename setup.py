@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='hlupik',
-    version='0.5.3',
+    version='0.5.4',
     url='https://github.com/baverman/hlupik/',
     license='MIT',
     author='Anton Bobrov',
